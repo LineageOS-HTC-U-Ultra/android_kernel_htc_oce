@@ -10,12 +10,12 @@ my $USAGE =
 use strict;
 use FileHandle;
 use IPC::Open2;
-use Getopt::Std;
+use Getopt::Long;
 
-my %opts;
-getopts('vs:', \%opts) or die $USAGE;
-my $verbose = $opts{'v'};
-my $signature_file = $opts{'s'};
+my $verbose = 0;
+my $signature_file;
+Getopt::Long::Configure('bundling', 'require_order');
+GetOptions('v' => \$verbose, 's=s' => \$signature_file) or die $USAGE;
 
 die $USAGE if ($#ARGV > 4);
 die $USAGE if (!$signature_file && $#ARGV < 3 || $signature_file && $#ARGV < 2);
@@ -315,36 +315,15 @@ my $id_type = 1;	# Identifier type: X.509
 #
 # Digest the data
 #
-my $prologue;
 if ($dgst eq "sha1") {
-    $prologue = pack("C*",
-		     0x30, 0x21, 0x30, 0x09, 0x06, 0x05,
-		     0x2B, 0x0E, 0x03, 0x02, 0x1A,
-		     0x05, 0x00, 0x04, 0x14);
     $hash = 2;
 } elsif ($dgst eq "sha224") {
-    $prologue = pack("C*",
-		     0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09,
-		     0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04,
-		     0x05, 0x00, 0x04, 0x1C);
     $hash = 7;
 } elsif ($dgst eq "sha256") {
-    $prologue = pack("C*",
-		     0x30, 0x31, 0x30, 0x0d, 0x06, 0x09,
-		     0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
-		     0x05, 0x00, 0x04, 0x20);
     $hash = 4;
 } elsif ($dgst eq "sha384") {
-    $prologue = pack("C*",
-		     0x30, 0x41, 0x30, 0x0d, 0x06, 0x09,
-		     0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02,
-		     0x05, 0x00, 0x04, 0x30);
     $hash = 5;
 } elsif ($dgst eq "sha512") {
-    $prologue = pack("C*",
-		     0x30, 0x51, 0x30, 0x0d, 0x06, 0x09,
-		     0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03,
-		     0x05, 0x00, 0x04, 0x40);
     $hash = 6;
 } else {
     die "Unknown hash algorithm: $dgst\n";
@@ -366,17 +345,17 @@ if ($signature_file) {
 	#
 	my $pid;
 	$pid = open2(*read_from, *write_to,
-		     "openssl rsautl -sign -inkey $private_key -keyform PEM") ||
-	    die "openssl rsautl";
+		     "openssl pkeyutl -sign -inkey $private_key -keyform PEM -pkeyopt digest:$dgst") ||
+	    die "openssl pkeyutl";
 	binmode write_to;
-	print write_to $prologue . $digest || die "pipe to openssl rsautl";
-	close(write_to) || die "pipe to openssl rsautl";
+	print write_to $digest || die "pipe to openssl pkeyutl";
+	close(write_to) || die "pipe to openssl pkeyutl";
 
 	binmode read_from;
-	read(read_from, $signature, 4096) || die "pipe from openssl rsautl";
-	close(read_from) || die "pipe from openssl rsautl";
+	read(read_from, $signature, 4096) || die "pipe from openssl pkeyutl";
+	close(read_from) || die "pipe from openssl pkeyutl";
 	waitpid($pid, 0) || die;
-	die "openssl rsautl died: $?" if ($? >> 8);
+	die "openssl pkeyutl died: $?" if ($? >> 8);
 }
 $signature = pack("n", length($signature)) . $signature,
 
